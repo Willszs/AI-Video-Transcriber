@@ -45,7 +45,7 @@ TEMP_DIR = PROJECT_ROOT / "temp"
 TEMP_DIR.mkdir(exist_ok=True)
 
 # 初始化处理器
-WHISPER_MODEL_SIZE = (os.getenv("WHISPER_MODEL_SIZE", "large-v3") or "large-v3").strip()
+WHISPER_MODEL_SIZE = (os.getenv("WHISPER_MODEL_SIZE", "base") or "base").strip()
 WHISPER_LANGUAGE = (os.getenv("WHISPER_LANGUAGE", "zh") or "zh").strip().lower()
 if WHISPER_LANGUAGE in {"", "auto", "none"}:
     WHISPER_LANGUAGE = None

@@ -179,7 +179,7 @@ AI-Video-Transcriber/
 | `OPENAI_API_KEY` | API密钥（服务端默认值） | - | 否，可在UI中配置 |
 | `HOST` | 服务器地址 | `0.0.0.0` | 否 |
 | `PORT` | 服务器端口 | `8000` | 否 |
-| `WHISPER_MODEL_SIZE` | Whisper模型大小 | `large-v3` | 否 |
+| `WHISPER_MODEL_SIZE` | Whisper模型大小 | `base` | 否 |
 | `WHISPER_LANGUAGE` | Whisper语言提示（`auto`、`zh`、`en`等） | `zh` | 否 |
 
 ### Whisper模型大小选项

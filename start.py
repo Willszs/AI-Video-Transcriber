@@ -70,7 +70,7 @@ def setup_environment():
     
     # 设置其他默认配置
     if not os.getenv("WHISPER_MODEL_SIZE"):
-        os.environ["WHISPER_MODEL_SIZE"] = "large-v3"
+        os.environ["WHISPER_MODEL_SIZE"] = "base"
     if not os.getenv("WHISPER_LANGUAGE"):
         os.environ["WHISPER_LANGUAGE"] = "zh"
     

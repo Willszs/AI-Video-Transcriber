@@ -179,7 +179,7 @@ AI-Video-Transcriber/
 | `OPENAI_API_KEY` | API key (server-side default) | - | No — can be set in UI instead |
 | `HOST` | Server address | `0.0.0.0` | No |
 | `PORT` | Server port | `8000` | No |
-| `WHISPER_MODEL_SIZE` | Whisper model size | `large-v3` | No |
+| `WHISPER_MODEL_SIZE` | Whisper model size | `base` | No |
 | `WHISPER_LANGUAGE` | Whisper language hint (`auto`, `zh`, `en`, ...) | `zh` | No |
 
 ### Whisper Model Size Options

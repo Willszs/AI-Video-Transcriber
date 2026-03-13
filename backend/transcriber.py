@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 class Transcriber:
     """音频转录器，使用Faster-Whisper进行语音转文字"""
     
-    def __init__(self, model_size: str = "large-v3", default_language: Optional[str] = "zh"):
+    def __init__(self, model_size: str = "base", default_language: Optional[str] = "zh"):
         """
         初始化转录器
         
@@ -20,6 +20,11 @@ class Transcriber:
         self.model_size = model_size
         lang = (default_language or "").strip().lower()
         self.default_language = None if lang in {"", "auto", "none"} else lang
+        # 速度优先：降低搜索宽度，避免高精度参数导致明显变慢
+        self.beam_size = 3
+        self.best_of = 3
+        self.temperature = 0.0
+        self.cpu_threads = max(1, os.cpu_count() or 4)
         self.model = None
         self.last_detected_language = None
         
@@ -28,7 +33,12 @@ class Transcriber:
         if self.model is None:
             logger.info(f"正在加载Whisper模型: {self.model_size}")
             try:
-                self.model = WhisperModel(self.model_size, device="cpu", compute_type="int8")
+                self.model = WhisperModel(
+                    self.model_size,
+                    device="cpu",
+                    compute_type="int8",
+                    cpu_threads=self.cpu_threads,
+                )
                 logger.info("模型加载完成")
             except Exception as e:
                 logger.error(f"模型加载失败: {str(e)}")
@@ -62,9 +72,9 @@ class Transcriber:
                 return self.model.transcribe(
                     audio_path,
                     language=effective_language,
-                    beam_size=8,
-                    best_of=8,
-                    temperature=[0.0, 0.2, 0.4],  # 使用温度递增策略
+                    beam_size=self.beam_size,
+                    best_of=self.best_of,
+                    temperature=self.temperature,
                     # 更稳健：开启VAD与阈值，降低静音/噪音导致的重复
                     vad_filter=True,
                     vad_parameters={
