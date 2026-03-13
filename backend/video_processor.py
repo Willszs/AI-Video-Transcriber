@@ -279,22 +279,31 @@ class VideoProcessor:
         return time_str
 
     def _format_subtitle_entries(self, entries: list, language: str) -> str:
-        """将字幕条目格式化为与 Whisper 输出兼容的 Markdown，供下游管道直接使用。"""
-        lines = [
-            "# Video Transcription",
-            "",
-            f"**Detected Language:** {language}",
-            "**Language Probability:** 1.00",
-            "",
-            "## Transcription Content",
-            "",
-        ]
+        """将字幕条目格式化为纯文本，不携带时间戳与元信息。"""
+        lines = []
         for entry in entries:
-            lines.append(f"**[{entry['start']} - {entry['end']}]**")
-            lines.append("")
-            lines.append(entry["text"])
-            lines.append("")
-        return "\n".join(lines)
+            text = self._normalize_subtitle_text(entry["text"], language)
+            if text:
+                lines.append(text)
+        return "\n".join(lines).strip()
+
+    def _normalize_subtitle_text(self, text: str, language: Optional[str]) -> str:
+        """规范字幕文本并自动补齐句末标点。"""
+        normalized = re.sub(r"\s+", " ", (text or "").strip())
+        if not normalized:
+            return ""
+        return self._ensure_sentence_end_punctuation(normalized, language)
+
+    def _ensure_sentence_end_punctuation(self, text: str, language: Optional[str]) -> str:
+        """若字幕行缺少句末标点，则按语言补齐。"""
+        end_chars = "。！？.!?…；;:：”’」』）)]}"
+        keep_tail = "，,、—-"
+        if not text:
+            return text
+        if text[-1] in end_chars or text[-1] in keep_tail or len(text) < 6:
+            return text
+        punct = "。" if (language or "").lower().startswith("zh") else "."
+        return f"{text}{punct}"
 
     async def download_and_convert(self, url: str, output_dir: Path) -> tuple[str, str]:
         """

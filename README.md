@@ -179,7 +179,8 @@ AI-Video-Transcriber/
 | `OPENAI_API_KEY` | API key (server-side default) | - | No — can be set in UI instead |
 | `HOST` | Server address | `0.0.0.0` | No |
 | `PORT` | Server port | `8000` | No |
-| `WHISPER_MODEL_SIZE` | Whisper model size | `base` | No |
+| `WHISPER_MODEL_SIZE` | Whisper model size | `large-v3` | No |
+| `WHISPER_LANGUAGE` | Whisper language hint (`auto`, `zh`, `en`, ...) | `zh` | No |
 
 ### Whisper Model Size Options
 
@@ -190,6 +191,7 @@ AI-Video-Transcriber/
 | small | 244 M | ✓ | ✓ | Medium | Medium |
 | medium | 769 M | ✓ | ✓ | Slow | Medium |
 | large | 1550 M | ✗ | ✓ | Very Slow | High |
+| large-v3 | ~1550 M | ✗ | ✓ | Very Slow | High |
 
 ## 🔧 FAQ
 
@@ -274,6 +276,7 @@ A: Memory usage varies depending on the deployment method and workload:
   - `small`: ~750MB
   - `medium`: ~1.5GB
   - `large`: ~3GB
+  - `large-v3`: ~3GB
 - **Peak usage**: Base + Model + Video processing (~500MB additional)
 
 **Memory Optimization Tips:**

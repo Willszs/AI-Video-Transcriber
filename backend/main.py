@@ -45,10 +45,21 @@ TEMP_DIR = PROJECT_ROOT / "temp"
 TEMP_DIR.mkdir(exist_ok=True)
 
 # 初始化处理器
+WHISPER_MODEL_SIZE = (os.getenv("WHISPER_MODEL_SIZE", "large-v3") or "large-v3").strip()
+WHISPER_LANGUAGE = (os.getenv("WHISPER_LANGUAGE", "zh") or "zh").strip().lower()
+if WHISPER_LANGUAGE in {"", "auto", "none"}:
+    WHISPER_LANGUAGE = None
+
 video_processor = VideoProcessor()
-transcriber = Transcriber()
+transcriber = Transcriber(model_size=WHISPER_MODEL_SIZE, default_language=WHISPER_LANGUAGE)
 summarizer = Summarizer()
 translator = Translator()
+
+logger.info(
+    "Whisper配置已加载: model=%s, language_hint=%s",
+    WHISPER_MODEL_SIZE,
+    WHISPER_LANGUAGE or "auto"
+)
 
 # 存储任务状态 - 使用文件持久化
 import json
@@ -116,6 +127,19 @@ def _sanitize_title_for_filename(title: str) -> str:
     safe = re.sub(r"\s+", "_", safe).strip("._-")
     # 最长限制，避免过长文件名问题
     return safe[:80] or "untitled"
+
+def _flatten_transcript_text(text: str) -> str:
+    """将转录文本压平为单行：移除换行并清理多余空白。"""
+    if not text:
+        return ""
+    flattened = re.sub(r"\s*\n+\s*", " ", text).strip()
+    flattened = re.sub(r"\s{2,}", " ", flattened)
+    # 中文字符间不保留空格，中文标点后也不额外留空格
+    flattened = re.sub(r"(?<=[\u4e00-\u9fff])\s+(?=[\u4e00-\u9fff])", "", flattened)
+    flattened = re.sub(r"([，。！？；：、])\s+", r"\1", flattened)
+    # 标点前空格清理
+    flattened = re.sub(r"\s+([,.!?;:])", r"\1", flattened)
+    return flattened
 
 @app.get("/")
 async def read_root():
@@ -275,7 +299,7 @@ async def process_video_task(
             raw_md_filename = f"raw_{safe_title}_{short_id}.md"
             raw_md_path = TEMP_DIR / raw_md_filename
             with open(raw_md_path, "w", encoding="utf-8") as f:
-                content_raw = (raw_script or "") + f"\n\nsource: {url}\n"
+                content_raw = _flatten_transcript_text(raw_script or "") + f"\n\nsource: {url}\n"
                 f.write(content_raw)
 
             # 记录原始转录文件路径（仅保存文件名，实际路径位于TEMP_DIR）
@@ -298,8 +322,8 @@ async def process_video_task(
         # 优化转录文本：修正错别字，按含义分段
         script = await request_summarizer.optimize_transcript(raw_script)
         
-        # 为转录文本添加标题，并在结尾添加来源链接
-        script_with_title = f"# {video_title}\n\n{script}\n\nsource: {url}\n"
+        # 最终转录仅保留单行正文文本（不附加标题/source）
+        script_text = _flatten_transcript_text(script or "") + "\n"
         
         # 检查是否需要翻译
         detected_language = transcriber.get_detected_language(raw_script)
@@ -347,7 +371,7 @@ async def process_video_task(
         script_filename = f"transcript_{task_id}.md"
         script_path = TEMP_DIR / script_filename
         async with aiofiles.open(script_path, "w", encoding="utf-8") as f:
-            await f.write(script_with_title)
+            await f.write(script_text)
         
         # 重命名为新规则：transcript_标题_短ID.md
         new_script_filename = f"transcript_{safe_title}_{short_id}.md"
@@ -372,7 +396,7 @@ async def process_video_task(
             "progress": 100,
             "message": "处理完成！",
             "video_title": video_title,
-            "script": script_with_title,
+            "script": script_text,
             "summary": summary_with_source,
             "script_path": str(script_path),
             "summary_path": str(summary_path),

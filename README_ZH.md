@@ -179,7 +179,8 @@ AI-Video-Transcriber/
 | `OPENAI_API_KEY` | API密钥（服务端默认值） | - | 否，可在UI中配置 |
 | `HOST` | 服务器地址 | `0.0.0.0` | 否 |
 | `PORT` | 服务器端口 | `8000` | 否 |
-| `WHISPER_MODEL_SIZE` | Whisper模型大小 | `base` | 否 |
+| `WHISPER_MODEL_SIZE` | Whisper模型大小 | `large-v3` | 否 |
+| `WHISPER_LANGUAGE` | Whisper语言提示（`auto`、`zh`、`en`等） | `zh` | 否 |
 
 ### Whisper模型大小选项
 
@@ -190,6 +191,7 @@ AI-Video-Transcriber/
 | small | 244 M | ✓ | ✓ | 中 | 中 |
 | medium | 769 M | ✓ | ✓ | 慢 | 中 |
 | large | 1550 M | ✗ | ✓ | 很慢 | 高 |
+| large-v3 | ~1550 M | ✗ | ✓ | 很慢 | 高 |
 
 ## 🔧 常见问题
 
@@ -274,6 +276,7 @@ A: 内存使用量根据部署方式和工作负载而有所不同：
   - `small`：约750MB
   - `medium`：约1.5GB
   - `large`：约3GB
+  - `large-v3`：约3GB
 - **峰值使用**：基础 + 模型 + 视频处理（额外约500MB）
 
 **内存优化建议：**

@@ -1,21 +1,25 @@
 import os
+import re
 from faster_whisper import WhisperModel
 import logging
-from typing import Optional
+from typing import Optional, List
 
 logger = logging.getLogger(__name__)
 
 class Transcriber:
     """音频转录器，使用Faster-Whisper进行语音转文字"""
     
-    def __init__(self, model_size: str = "base"):
+    def __init__(self, model_size: str = "large-v3", default_language: Optional[str] = "zh"):
         """
         初始化转录器
         
         Args:
-            model_size: Whisper模型大小 (tiny, base, small, medium, large)
+            model_size: Whisper模型大小 (tiny, base, small, medium, large, large-v3)
+            default_language: 默认语言提示（如 zh, en）。None 表示自动检测。
         """
         self.model_size = model_size
+        lang = (default_language or "").strip().lower()
+        self.default_language = None if lang in {"", "auto", "none"} else lang
         self.model = None
         self.last_detected_language = None
         
@@ -36,10 +40,10 @@ class Transcriber:
         
         Args:
             audio_path: 音频文件路径
-            language: 指定语言（可选，如果不指定则自动检测）
+            language: 指定语言（可选，不指定则使用默认语言提示或自动检测）
             
         Returns:
-            转录文本（Markdown格式）
+            转录文本（纯文本）
         """
         try:
             # 检查文件是否存在
@@ -50,15 +54,16 @@ class Transcriber:
             self._load_model()
             
             logger.info(f"开始转录音频: {audio_path}")
+            effective_language = language or self.default_language
             
             # 直接调用会阻塞事件循环；放入线程避免阻塞
             import asyncio
             def _do_transcribe():
                 return self.model.transcribe(
                     audio_path,
-                    language=language,
-                    beam_size=5,
-                    best_of=5,
+                    language=effective_language,
+                    beam_size=8,
+                    best_of=8,
                     temperature=[0.0, 0.2, 0.4],  # 使用温度递增策略
                     # 更稳健：开启VAD与阈值，降低静音/噪音导致的重复
                     vad_filter=True,
@@ -79,28 +84,14 @@ class Transcriber:
             logger.info(f"检测到的语言: {detected_language}")
             logger.info(f"语言检测概率: {info.language_probability:.2f}")
             
-            # 组装转录结果
-            transcript_lines = []
-            transcript_lines.append("# Video Transcription")
-            transcript_lines.append("")
-            transcript_lines.append(f"**Detected Language:** {detected_language}")
-            transcript_lines.append(f"**Language Probability:** {info.language_probability:.2f}")
-            transcript_lines.append("")
-            transcript_lines.append("## Transcription Content")
-            transcript_lines.append("")
-            
-            # 添加时间戳和文本
+            # 输出纯文本：不包含时间戳或元数据，只保留内容本身
+            transcript_lines: List[str] = []
             for segment in segments:
-                start_time = self._format_time(segment.start)
-                end_time = self._format_time(segment.end)
-                text = segment.text.strip()
-                
-                transcript_lines.append(f"**[{start_time} - {end_time}]**")
-                transcript_lines.append("")
-                transcript_lines.append(text)
-                transcript_lines.append("")
-            
-            transcript_text = "\n".join(transcript_lines)
+                text = self._normalize_segment_text(segment.text, detected_language)
+                if text:
+                    transcript_lines.append(text)
+
+            transcript_text = "\n".join(transcript_lines).strip()
             logger.info("转录完成")
             
             return transcript_text
@@ -109,24 +100,23 @@ class Transcriber:
             logger.error(f"转录失败: {str(e)}")
             raise Exception(f"转录失败: {str(e)}")
     
-    def _format_time(self, seconds: float) -> str:
-        """
-        将秒数转换为时分秒格式
-        
-        Args:
-            seconds: 秒数
-            
-        Returns:
-            格式化的时间字符串
-        """
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        seconds = int(seconds % 60)
-        
-        if hours > 0:
-            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-        else:
-            return f"{minutes:02d}:{seconds:02d}"
+    def _normalize_segment_text(self, text: str, language: Optional[str]) -> str:
+        """规范Whisper片段文本，并在必要时补齐句末标点。"""
+        normalized = re.sub(r"\s+", " ", (text or "").strip())
+        if not normalized:
+            return ""
+        return self._ensure_sentence_end_punctuation(normalized, language)
+
+    def _ensure_sentence_end_punctuation(self, text: str, language: Optional[str]) -> str:
+        """若片段缺少句末标点，则按语言补齐。"""
+        end_chars = "。！？.!?…；;:：”’」』）)]}"
+        keep_tail = "，,、—-"
+        if not text:
+            return text
+        if text[-1] in end_chars or text[-1] in keep_tail or len(text) < 6:
+            return text
+        punct = "。" if (language or "").lower().startswith("zh") else "."
+        return f"{text}{punct}"
     
     def get_supported_languages(self) -> list:
         """

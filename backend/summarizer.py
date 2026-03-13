@@ -1,6 +1,7 @@
 import os
 import openai
 import logging
+import re
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -64,8 +65,9 @@ class Summarizer:
         """
         try:
             if not self.client:
-                logger.warning("OpenAI API不可用，返回原始转录")
-                return raw_transcript
+                logger.warning("OpenAI API不可用，使用本地规则优化转录文本")
+                fallback = self._basic_transcript_cleanup(raw_transcript)
+                return self._ensure_markdown_paragraphs(fallback)
 
             # 预处理：仅移除时间戳与元信息，保留全部口语/重复内容
             preprocessed = self._remove_timestamps_and_meta(raw_transcript)
@@ -515,7 +517,16 @@ class Summarizer:
             if s.startswith('# '):
                 # 跳过顶级标题（通常是视频标题，可在最终加回）
                 continue
-            if s.startswith('**检测语言:**') or s.startswith('**语言概率:**'):
+            if s.startswith('## '):
+                continue
+            if (
+                s.startswith('**检测语言:**')
+                or s.startswith('**语言概率:**')
+                or s.startswith('**Detected Language:**')
+                or s.startswith('**Language Probability:**')
+            ):
+                continue
+            if s.lower().startswith("source:"):
                 continue
             kept.append(line)
         # 规范空行
@@ -627,6 +638,9 @@ class Summarizer:
                 line.startswith('#') or
                 line.startswith('**检测语言:**') or
                 line.startswith('**语言概率:**') or
+                line.startswith('**Detected Language:**') or
+                line.startswith('**Language Probability:**') or
+                line.lower().startswith('source:') or
                 not line):
                 continue
             text_lines.append(line)
@@ -675,81 +689,66 @@ class Summarizer:
 
     def _basic_transcript_cleanup(self, raw_transcript: str) -> str:
         """
-        基本的转录文本清理：移除时间戳和标题信息
-        当GPT优化失败时的后备方案
+        基本转录清理与标点补全（无OpenAI可用时的后备方案）。
         """
         lines = raw_transcript.split('\n')
         cleaned_lines = []
-        
+
         for line in lines:
-            # 跳过时间戳行
-            if line.strip().startswith('**[') and line.strip().endswith(']**'):
+            s = line.strip()
+            # 跳过时间戳与元信息
+            if s.startswith('**[') and s.endswith(']**'):
                 continue
-            # 跳过标题行
-            if line.strip().startswith('# ') or line.strip().startswith('## '):
+            if s.startswith('#'):
                 continue
-            # 跳过检测语言等元信息行
-            if line.strip().startswith('**检测语言:**') or line.strip().startswith('**语言概率:**'):
+            if (
+                s.startswith('**检测语言:**')
+                or s.startswith('**语言概率:**')
+                or s.startswith('**Detected Language:**')
+                or s.startswith('**Language Probability:**')
+            ):
                 continue
-            # 保留非空文本行
-            if line.strip():
-                cleaned_lines.append(line.strip())
-        
-        # 将句子重新组合并智能分段
-        text = ' '.join(cleaned_lines)
-        
-        # 更智能的分句处理，考虑中英文差异
-        import re
-        
-        # 按句号、问号、感叹号分句
-        sentences = re.split(r'[.!?。！？]', text)
-        sentences = [s.strip() for s in sentences if s.strip()]
-        
+            if s.lower().startswith("source:") or not s:
+                continue
+
+            s = re.sub(r"\s+", " ", s)
+            s = self._ensure_sentence_end_punctuation(s)
+            if s:
+                cleaned_lines.append(s)
+
+        if not cleaned_lines:
+            return ""
+
+        # 按长度做基础分段，避免超长段落
         paragraphs = []
-        current_paragraph = []
-        
-        for i, sentence in enumerate(sentences):
-            if sentence:
-                current_paragraph.append(sentence)
-                
-                # 智能分段条件：
-                # 1. 每3个句子一段（基本规则）
-                # 2. 遇到话题转换词汇时强制分段
-                # 3. 避免超长段落
-                topic_change_keywords = [
-                    '首先', '其次', '然后', '接下来', '另外', '此外', '最后', '总之',
-                    'first', 'second', 'third', 'next', 'also', 'however', 'finally',
-                    '现在', '那么', '所以', '因此', '但是', '然而',
-                    'now', 'so', 'therefore', 'but', 'however'
-                ]
-                
-                should_break = False
-                
-                # 检查是否需要分段
-                if len(current_paragraph) >= 3:  # 基本长度条件
-                    should_break = True
-                elif len(current_paragraph) >= 2:  # 较短但遇到话题转换
-                    for keyword in topic_change_keywords:
-                        if sentence.lower().startswith(keyword.lower()):
-                            should_break = True
-                            break
-                
-                if should_break or len(current_paragraph) >= 4:  # 最大长度限制
-                    # 组合当前段落
-                    paragraph_text = '. '.join(current_paragraph)
-                    if not paragraph_text.endswith('.'):
-                        paragraph_text += '.'
-                    paragraphs.append(paragraph_text)
-                    current_paragraph = []
-        
-        # 添加剩余的句子
-        if current_paragraph:
-            paragraph_text = '. '.join(current_paragraph)
-            if not paragraph_text.endswith('.'):
-                paragraph_text += '.'
-            paragraphs.append(paragraph_text)
-        
+        current = []
+        current_chars = 0
+        max_chars = 320
+        for sentence in cleaned_lines:
+            add_size = len(sentence) + (1 if current else 0)
+            if current and current_chars + add_size > max_chars:
+                paragraphs.append(" ".join(current))
+                current = [sentence]
+                current_chars = len(sentence)
+            else:
+                current.append(sentence)
+                current_chars += add_size
+
+        if current:
+            paragraphs.append(" ".join(current))
+
         return '\n\n'.join(paragraphs)
+
+    def _ensure_sentence_end_punctuation(self, text: str) -> str:
+        """若句末无标点，则自动补齐中英文句号。"""
+        if not text:
+            return text
+        end_chars = "。！？.!?…；;:：”’」』）)]}"
+        keep_tail = "，,、—-"
+        if text[-1] in end_chars or text[-1] in keep_tail or len(text) < 6:
+            return text
+        has_cjk = bool(re.search(r"[\u4e00-\u9fff]", text))
+        return f"{text}{'。' if has_cjk else '.'}"
 
     async def _final_paragraph_organization(self, text: str, lang_instruction: str) -> str:
         """
