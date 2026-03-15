@@ -6,6 +6,7 @@ import yt_dlp
 import logging
 from pathlib import Path
 from typing import Optional
+from text_normalizer import to_simplified_chinese
 
 logger = logging.getLogger(__name__)
 
@@ -292,6 +293,7 @@ class VideoProcessor:
         normalized = re.sub(r"\s+", " ", (text or "").strip())
         if not normalized:
             return ""
+        normalized = to_simplified_chinese(normalized, language)
         return self._ensure_sentence_end_punctuation(normalized, language)
 
     def _ensure_sentence_end_punctuation(self, text: str, language: Optional[str]) -> str:

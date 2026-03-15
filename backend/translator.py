@@ -272,7 +272,9 @@ class Translator:
             return False
         
         # 处理中文的特殊情况
-        chinese_variants = ["zh", "zh-cn", "zh-hans", "chinese"]
+        chinese_variants = [
+            "zh", "zh-cn", "zh-hans", "zh-hant", "zh-tw", "zh-hk", "chinese"
+        ]
         if source_lang in chinese_variants and target_lang in chinese_variants:
             return False
         

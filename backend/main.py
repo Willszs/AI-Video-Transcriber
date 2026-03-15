@@ -18,6 +18,7 @@ from video_processor import VideoProcessor
 from transcriber import Transcriber
 from summarizer import Summarizer
 from translator import Translator
+from text_normalizer import to_simplified_chinese
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -292,6 +293,9 @@ async def process_video_task(
 
             raw_script = await transcriber.transcribe(audio_path)
 
+        # 中文统一简体：字幕路径与Whisper路径都在此做一次总兜底
+        raw_script = to_simplified_chinese(raw_script, transcriber.last_detected_language)
+
         # 将Whisper原始转录保存为Markdown文件，供下载/归档
         try:
             short_id = task_id.replace("-", "")[:6]
@@ -321,13 +325,16 @@ async def process_video_task(
         
         # 优化转录文本：修正错别字，按含义分段
         script = await request_summarizer.optimize_transcript(raw_script)
-        
-        # 最终转录仅保留单行正文文本（不附加标题/source）
-        script_text = _flatten_transcript_text(script or "") + "\n"
-        
+
         # 检查是否需要翻译
         detected_language = transcriber.get_detected_language(raw_script)
         logger.info(f"检测到的语言: {detected_language}, 摘要语言: {summary_language}")
+
+        # 中文转录线统一输出简体
+        script = to_simplified_chinese(script, detected_language)
+
+        # 最终转录仅保留单行正文文本（不附加标题/source）
+        script_text = _flatten_transcript_text(script or "") + "\n"
         
         translation_content = None
         translation_filename = None
