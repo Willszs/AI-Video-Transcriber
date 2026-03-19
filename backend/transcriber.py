@@ -3,7 +3,7 @@ import re
 from faster_whisper import WhisperModel
 import logging
 from typing import Optional, List
-from text_normalizer import to_simplified_chinese
+from text_normalizer import normalize_chinese_punctuation, to_simplified_chinese
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +117,7 @@ class Transcriber:
         if not normalized:
             return ""
         normalized = to_simplified_chinese(normalized, language)
+        normalized = normalize_chinese_punctuation(normalized, language)
         return self._ensure_sentence_end_punctuation(normalized, language)
 
     def _ensure_sentence_end_punctuation(self, text: str, language: Optional[str]) -> str:

@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,26 @@ def to_simplified_chinese(text: str, language_hint: Optional[str] = None) -> str
     except Exception as e:  # pragma: no cover
         logger.warning(f"简繁转换失败，保留原文: {e}")
         return text
+
+
+def normalize_chinese_punctuation(text: str, language_hint: Optional[str] = None) -> str:
+    """Normalize common ASCII punctuation to Chinese punctuation in Chinese text."""
+    if not text or not is_chinese_language(language_hint):
+        return text
+
+    normalized = text
+    replacements = {
+        ",": "，",
+        ";": "；",
+        ":": "：",
+        "?": "？",
+        "!": "！",
+    }
+    for ascii_punct, cjk_punct in replacements.items():
+        normalized = normalized.replace(ascii_punct, cjk_punct)
+
+    normalized = re.sub(r"\.(?=$|[\"'”’」』）)])", "。", normalized)
+    return normalized
 
 
 def _get_opencc_converter():
