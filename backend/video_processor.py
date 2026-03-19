@@ -14,6 +14,15 @@ class VideoProcessor:
     """视频处理器，使用yt-dlp下载和转换视频"""
     
     def __init__(self):
+        self.cookie_file = os.getenv("YTDLP_COOKIES_FILE", "").strip()
+        self.user_agent = os.getenv(
+            "YTDLP_USER_AGENT",
+            (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/133.0.0.0 Safari/537.36"
+            ),
+        ).strip()
         self.ydl_opts = {
             'format': 'bestaudio/best',  # 优先下载最佳音频源
             'outtmpl': '%(title)s.%(ext)s',
@@ -30,7 +39,33 @@ class VideoProcessor:
             'no_warnings': True,
             'noplaylist': True,  # 强制只下载单个视频，不下载播放列表
         }
-    
+        self.ydl_opts['http_headers'] = {
+            'User-Agent': self.user_agent,
+            'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
+            'Referer': 'https://www.youtube.com/',
+        }
+        self.ydl_opts['extractor_args'] = {
+            'youtube': {
+                'player_client': ['web', 'android', 'tv_embedded'],
+            }
+        }
+        self.ydl_opts['retries'] = 3
+        self.ydl_opts['fragment_retries'] = 3
+        self.ydl_opts['sleep_interval_requests'] = 1
+        self._apply_cookie_file(self.ydl_opts)
+
+    def _apply_cookie_file(self, opts: dict) -> None:
+        if self.cookie_file:
+            opts['cookiefile'] = self.cookie_file
+            logger.info(f"yt-dlp cookies enabled: {self.cookie_file}")
+
+    def _create_ydl_opts(self, **overrides) -> dict:
+        opts = dict(self.ydl_opts)
+        for key, value in overrides.items():
+            opts[key] = value
+        self._apply_cookie_file(opts)
+        return opts
+
     async def fetch_subtitles(self, url: str, output_dir: Path) -> tuple[Optional[str], Optional[str], Optional[str]]:
         """
         先尝试从平台获取字幕文本，比下载音频快得多。
@@ -47,7 +82,13 @@ class VideoProcessor:
 
         try:
             # 1. 快速探测：获取视频信息和字幕可用性，不下载任何内容
-            check_opts = {"quiet": True, "no_warnings": True, "noplaylist": True}
+            check_opts = self._create_ydl_opts(
+                skip_download=True,
+                postprocessors=[],
+                postprocessor_args=[],
+                format=None,
+                outtmpl='%(title)s.%(ext)s',
+            )
             with yt_dlp.YoutubeDL(check_opts) as ydl:
                 info = await asyncio.to_thread(ydl.extract_info, url, False)
 
@@ -84,17 +125,16 @@ class VideoProcessor:
 
             # 2. 仅下载字幕，跳过音视频
             sub_dir.mkdir(exist_ok=True)
-            dl_opts = {
-                "writesubtitles": prefer_manual,
-                "writeautomaticsub": not prefer_manual,
-                "subtitlesformat": "vtt/srt/best",
-                "subtitleslangs": [prefer_lang],
-                "skip_download": True,
-                "outtmpl": str(sub_dir / "sub.%(ext)s"),
-                "quiet": True,
-                "no_warnings": True,
-                "noplaylist": True,
-            }
+            dl_opts = self._create_ydl_opts(
+                writesubtitles=prefer_manual,
+                writeautomaticsub=not prefer_manual,
+                subtitlesformat="vtt/srt/best",
+                subtitleslangs=[prefer_lang],
+                skip_download=True,
+                outtmpl=str(sub_dir / "sub.%(ext)s"),
+                postprocessors=[],
+                postprocessor_args=[],
+            )
             with yt_dlp.YoutubeDL(dl_opts) as ydl:
                 await asyncio.to_thread(ydl.download, [url])
 
@@ -331,8 +371,7 @@ class VideoProcessor:
             output_template = str(output_dir / f"audio_{unique_id}.%(ext)s")
             
             # 更新yt-dlp选项
-            ydl_opts = self.ydl_opts.copy()
-            ydl_opts['outtmpl'] = output_template
+            ydl_opts = self._create_ydl_opts(outtmpl=output_template)
             
             logger.info(f"开始下载视频: {url}")
             
@@ -406,7 +445,7 @@ class VideoProcessor:
             视频信息字典
         """
         try:
-            with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+            with yt_dlp.YoutubeDL(self._create_ydl_opts()) as ydl:
                 info = ydl.extract_info(url, download=False)
                 return {
                     'title': info.get('title', ''),

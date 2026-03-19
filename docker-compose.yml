@@ -12,12 +12,15 @@ services:
       - WHISPER_MODEL_SIZE=${WHISPER_MODEL_SIZE:-base}
       # 可选：Whisper语言提示（zh/en/...，auto为自动检测）
       - WHISPER_LANGUAGE=${WHISPER_LANGUAGE:-zh}
+      - YTDLP_COOKIES_FILE=${YTDLP_COOKIES_FILE:-}
+      - YTDLP_USER_AGENT=${YTDLP_USER_AGENT:-}
       # 服务器配置
       - HOST=0.0.0.0
       - PORT=8000
     # volumes:
       # 挂载临时文件目录，便于查看和管理下载的文件  
       # - ./temp:/app/temp
+      # - ./cookies/youtube.txt:/run/secrets/youtube-cookies.txt:ro
     restart: unless-stopped
     
     # 资源限制（可选）
