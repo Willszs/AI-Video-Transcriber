@@ -16,6 +16,7 @@ An AI-powered tool to transcribe and summarize videos and podcasts — supports 
 - ⚡ **Subtitle-First Architecture**: For platforms with native subtitles (e.g. YouTube), transcripts are extracted instantly — no audio download needed. Whisper is only used as a fallback, making the whole pipeline dramatically faster.
 - 🗣️ **Intelligent Transcription**: High-accuracy speech-to-text using Faster-Whisper when subtitles aren't available
 - 🤖 **AI Text Optimization**: Automatic typo correction, sentence completion, and intelligent paragraphing
+- 🇨🇳 **Chinese Normalization**: Chinese transcripts are normalized to Simplified Chinese, with common punctuation unified for cleaner output
 - 🌍 **Multi-Language Summaries**: Generate intelligent summaries in multiple languages
 - 🔧 **Bring Your Own Model**: Configure any OpenAI-compatible API endpoint (OpenAI, OpenRouter, local LLM, etc.) directly in the UI — enter your API Base URL and API Key, then click **Fetch** to auto-discover all available models and select the one you want
 - ⚙️ **Conditional Translation**: Auto-translates the transcript when the summary language differs from the source language
@@ -27,9 +28,11 @@ An AI-powered tool to transcribe and summarize videos and podcasts — supports 
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.10+ recommended
 - FFmpeg
-- An API key from any OpenAI-compatible provider (OpenAI, OpenRouter, etc.) — configured directly in the UI, no server-side env var needed
+- An API key from any OpenAI-compatible provider (OpenAI, OpenRouter, etc.) is optional
+  - Without an API key, raw transcription still works
+  - AI optimization, translation, and summary generation require an API key
 
 ### Installation
 
@@ -55,11 +58,11 @@ cd AI-Video-Transcriber
 # Using Docker Compose (easiest)
 cp .env.example .env
 # Edit .env file if you want server-side defaults (optional)
-docker-compose up -d
+docker compose up --build
 
 # Or using Docker directly
 docker build -t ai-video-transcriber .
-docker run -p 8000:8000 ai-video-transcriber
+docker run -p 8000:8000 --env-file .env ai-video-transcriber
 ```
 
 #### Method 3: Manual Installation
@@ -90,6 +93,7 @@ sudo yum install ffmpeg
 # If you prefer server-side defaults, set these — otherwise configure via the UI
 export OPENAI_API_KEY="your_api_key_here"
 export OPENAI_BASE_URL="https://openrouter.ai/api/v1"  # any OpenAI-compatible endpoint
+export WHISPER_LANGUAGE="zh"  # zh / en / ja / ... ; use auto for auto detection
 ```
 
 ### Start the Service
@@ -176,11 +180,13 @@ AI-Video-Transcriber/
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `OPENAI_API_KEY` | API key (server-side default) | - | No — can be set in UI instead |
+| `OPENAI_API_KEY` | API key (server-side default) | - | No — but required for AI optimization / translation / summary |
 | `HOST` | Server address | `0.0.0.0` | No |
 | `PORT` | Server port | `8000` | No |
 | `WHISPER_MODEL_SIZE` | Whisper model size | `base` | No |
 | `WHISPER_LANGUAGE` | Whisper language hint (`auto`, `zh`, `en`, ...) | `zh` | No |
+| `YTDLP_COOKIES_FILE` | Optional Netscape-format cookies file path for YouTube | - | No |
+| `YTDLP_USER_AGENT` | Optional override for yt-dlp user agent | built-in browser UA | No |
 
 ### Whisper Model Size Options
 
@@ -202,7 +208,7 @@ A: Transcription speed depends on video length, Whisper model size, and hardware
 A: All platforms supported by yt-dlp, including but not limited to: YouTube, TikTok, Facebook, Instagram, Twitter, Bilibili, Youku, iQiyi, Tencent Video, etc.
 
 ### Q: What if the AI optimization features are unavailable?
-A: AI features require an API key from any OpenAI-compatible provider (OpenAI, OpenRouter, etc.). You can enter it directly in the **AI Settings** panel in the UI — no server restart needed. Alternatively, set `OPENAI_API_KEY` as an environment variable for a server-side default.
+A: AI features require an API key from any OpenAI-compatible provider (OpenAI, OpenRouter, etc.). You can enter it directly in the **AI Settings** panel in the UI — no server restart needed. Alternatively, set `OPENAI_API_KEY` as an environment variable for a server-side default. Without an API key, the app can still do transcription, but AI cleanup, translation, and summaries will be limited or skipped.
 
 ### Q: I get HTTP 500 errors when starting/using the service. Why?
 A: In most cases this is an environment configuration issue rather than a code bug. Please check:
@@ -231,7 +237,7 @@ cp .env.example .env
 # Edit .env file to set server-side defaults (optional)
 
 # Start with Docker Compose (recommended)
-docker-compose up -d
+docker compose up --build
 
 # Or build and run manually
 docker build -t ai-video-transcriber .
@@ -253,10 +259,30 @@ docker ps
 docker logs ai-video-transcriber-ai-video-transcriber-1
 
 # Stop service
-docker-compose down
+docker compose down
 
 # Rebuild after changes
-docker-compose build --no-cache
+docker compose build --no-cache
+```
+
+### Q: YouTube downloads return 403 in Docker. What should I do?
+A: Start with a clean rebuild:
+
+```bash
+docker compose down
+docker compose up --build
+```
+
+If the problem only happens inside Docker, mount a browser-exported Netscape cookies file and point `YTDLP_COOKIES_FILE` to it:
+
+```bash
+# docker-compose.yml
+# - ./cookies/youtube.txt:/run/secrets/youtube-cookies.txt:ro
+```
+
+```bash
+# .env
+YTDLP_COOKIES_FILE=/run/secrets/youtube-cookies.txt
 ```
 
 ### Q: What are the memory requirements?

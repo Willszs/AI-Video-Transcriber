@@ -16,6 +16,7 @@
 - ⚡ **字幕优先架构**: 对有原生字幕的平台（如YouTube），直接提取字幕文本，无需下载音频，速度大幅提升；无字幕时自动回退至Whisper转录
 - 🗣️ **智能转录**: 无字幕时使用Faster-Whisper进行高精度语音转文字
 - 🤖 **AI文本优化**: 自动错别字修正、句子完整化和智能分段
+- 🇨🇳 **中文规范化**: 中文转录会统一为简体中文，并规范常见中英文混用标点
 - 🌍 **多语言摘要**: 支持多种语言的智能摘要生成
 - 🔧 **自定义AI模型**: 在页面中直接配置任意OpenAI兼容接口（OpenAI、OpenRouter、本地LLM等）——输入API地址和Key，点击 **Fetch** 自动获取可用模型并选择
 - ⚙️ **条件式翻译**: 当所选摘要语言与转录语言不一致时，自动生成翻译
@@ -25,9 +26,11 @@
 
 ### 环境要求
 
-- Python 3.8+
+- Python 3.10+（推荐）
 - FFmpeg
-- 任意OpenAI兼容服务商的API Key（OpenAI、OpenRouter等）—— 直接在页面UI中配置，无需服务器环境变量
+- 任意 OpenAI 兼容服务商的 API Key（OpenAI、OpenRouter 等）是可选的
+  - 不配置 Key 时，纯转录仍可用
+  - AI 优化、翻译、摘要需要 Key
 
 ### 安装方法
 
@@ -54,7 +57,7 @@ cd AI-Video-Transcriber
 # 使用Docker Compose（最简单）
 cp .env.example .env
 # 编辑.env文件设置服务端默认值（可选）
-docker-compose up -d
+docker compose up --build
 
 # 或者直接使用Docker
 docker build -t ai-video-transcriber .
@@ -89,6 +92,7 @@ sudo yum install ffmpeg
 # 如需服务端默认值可设置，否则直接在页面 AI Settings 面板中配置
 export OPENAI_API_KEY="your_api_key_here"
 export OPENAI_BASE_URL="https://openrouter.ai/api/v1"  # 任意兼容端点
+export WHISPER_LANGUAGE="zh"  # zh / en / ja / ...；auto 为自动检测
 ```
 
 ### 启动服务
@@ -181,6 +185,8 @@ AI-Video-Transcriber/
 | `PORT` | 服务器端口 | `8000` | 否 |
 | `WHISPER_MODEL_SIZE` | Whisper模型大小 | `base` | 否 |
 | `WHISPER_LANGUAGE` | Whisper语言提示（`auto`、`zh`、`en`等） | `zh` | 否 |
+| `YTDLP_COOKIES_FILE` | YouTube cookies 文件路径（Netscape 格式） | - | 否 |
+| `YTDLP_USER_AGENT` | yt-dlp 自定义 User-Agent | 内置浏览器 UA | 否 |
 
 ### Whisper模型大小选项
 
@@ -202,7 +208,7 @@ A: 转录速度取决于视频长度、Whisper模型大小和硬件性能。可�
 A: 支持所有yt-dlp支持的平台，包括但不限于：YouTube、抖音、Bilibili、优酷、爱奇艺、腾讯视频等。
 
 ### Q: AI优化功能不可用怎么办？
-A: AI功能需要任意OpenAI兼容服务商的API Key（OpenAI、OpenRouter等）。可直接在页面 **AI Settings** 面板中填写，无需重启服务。也可通过 `OPENAI_API_KEY` 环境变量设置服务端默认值。
+A: AI功能需要任意OpenAI兼容服务商的API Key（OpenAI、OpenRouter等）。可直接在页面 **AI Settings** 面板中填写，无需重启服务。也可通过 `OPENAI_API_KEY` 环境变量设置服务端默认值。若不配置 Key，系统仍可做基础转录，但 AI 优化、翻译和摘要会受限或跳过。
 
 ### Q: 出现 500 报错/白屏，是代码问题吗？
 A: 多数情况下是环境配置问题，请按以下清单排查：
@@ -231,7 +237,7 @@ cp .env.example .env
 # 编辑.env文件设置服务端默认值（可选）
 
 # 使用Docker Compose启动（推荐）
-docker-compose up -d
+docker compose up --build
 
 # 或手动构建运行
 docker build -t ai-video-transcriber .
@@ -253,10 +259,30 @@ docker ps
 docker logs ai-video-transcriber-ai-video-transcriber-1
 
 # 停止服务
-docker-compose down
+docker compose down
 
 # 修改后重新构建
-docker-compose build --no-cache
+docker compose build --no-cache
+```
+
+### Q: Docker 里 YouTube 下载返回 403 怎么办？
+A: 先做一次完整重建：
+
+```bash
+docker compose down
+docker compose up --build
+```
+
+如果只是在 Docker 里报 403，可以挂载浏览器导出的 Netscape 格式 cookies 文件，并在 `.env` 中指定：
+
+```bash
+# docker-compose.yml
+# - ./cookies/youtube.txt:/run/secrets/youtube-cookies.txt:ro
+```
+
+```bash
+# .env
+YTDLP_COOKIES_FILE=/run/secrets/youtube-cookies.txt
 ```
 
 ### Q: 内存需求是多少？
